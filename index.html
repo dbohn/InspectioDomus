@@ -1,0 +1,170 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <script src="mqttws31.js"></script>
+        <script src="vue.js"></script>
+        <title>Home Control Panel</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <link rel="stylesheet" href="style.css">
+        <link rel="shortcut icon" type="image/x-icon" href="/_icons/favicon.ico">
+        <link rel="icon" type="image/x-icon" href="/_icons/favicon.ico">
+        <link rel="icon" type="image/gif" href="/_icons/favicon.gif">
+        <link rel="icon" type="image/png" href="/_icons/favicon.png">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon.png">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-57x57.png" sizes="57x57">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-60x60.png" sizes="60x60">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-72x72.png" sizes="72x72">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-76x76.png" sizes="76x76">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-114x114.png" sizes="114x114">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-120x120.png" sizes="120x120">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-128x128.png" sizes="128x128">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-144x144.png" sizes="144x144">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-152x152.png" sizes="152x152">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-180x180.png" sizes="180x180">
+        <link rel="apple-touch-icon" href="/_icons/apple-touch-icon-precomposed.png">
+        <link rel="icon" type="image/png" href="/_icons/favicon-16x16.png" sizes="16x16">
+        <link rel="icon" type="image/png" href="/_icons/favicon-32x32.png" sizes="32x32">
+        <link rel="icon" type="image/png" href="/_icons/favicon-96x96.png" sizes="96x96">
+        <link rel="icon" type="image/png" href="/_icons/favicon-160x160.png" sizes="160x160">
+        <link rel="icon" type="image/png" href="/_icons/favicon-192x192.png" sizes="192x192">
+        <link rel="icon" type="image/png" href="/_icons/favicon-196x196.png" sizes="196x196">
+        <meta name="msapplication-TileImage" content="/_icons/win8-tile-144x144.png"> 
+        <meta name="msapplication-TileColor" content="#34495e"> 
+        <meta name="msapplication-navbutton-color" content="#34495e"> 
+        <meta name="application-name" content="Home Control"/> 
+        <meta name="msapplication-tooltip" content="Home Control"/> 
+        <meta name="apple-mobile-web-app-title" content="Home Control"/> 
+        <meta name="msapplication-square70x70logo" content="/_icons/win8-tile-70x70.png"> 
+        <meta name="msapplication-square144x144logo" content="/_icons/win8-tile-144x144.png"> 
+        <meta name="msapplication-square150x150logo" content="/_icons/win8-tile-150x150.png"> 
+        <meta name="msapplication-wide310x150logo" content="/_icons/win8-tile-310x150.png"> 
+        <meta name="msapplication-square310x310logo" content="/_icons/win8-tile-310x310.png"> 
+    </head>
+    <body>
+        <div id="controller">
+            <panel title="Pi Info"> 
+                <table border="0" class="info">
+                    <thead>
+                        <tr><th class="info">Info</th><th>Value</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>CPU-Temperatur</td>
+                            <td v-if="temperature">{{ temperature }} &deg;C</td>
+                            <td v-if="!temperature">Unknown</td>
+                        </tr>
+                        <tr>
+                            <td>Uptime</td>
+                            <td>{{ uptime }}</td>
+                        </tr>
+                        <tr>
+                            <td>RAM-Auslastung</td>
+                            <td>{{ ram_total }} MiB, davon {{ ram_used }} MiB benutzt</td>
+                        </tr>
+                        <tr>
+                            <td>Status</td>
+                            <td>{{ status }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </panel>
+            <panel title="Plug Control" header-color="orange">
+                    <div v-if="connected" class="switches">
+                        <button @click.prevent="enable(1, '1')">Switch Plug 1 on</button>
+                        <button @click.prevent="enable(1, '0')">Switch Plug 1 off</button>
+                        <button @click.prevent="enable(2, '1')">Switch Plug 2 on</button>
+                        <button @click.prevent="enable(2, '0')">Switch Plug 2 off</button>
+                    </div>
+            </panel>
+        </div>
+
+        <script id="panelTemplate" type="text/x-template">
+            <div class="panel">
+                <div class="panel__header" v-bind:class="{'panel__header-orange': headerColor == 'orange'}" @click="hide=!hide">
+                    <div class="panel__header_toggler" v-show="!hide">▲</div>
+                    <div class="panel__header_toggler" v-show="hide">▼</div>
+                    <h3>{{ title }}</h3>
+                </div>
+                <div v-show="!hide" class="panel__content">
+                    <slot></slot>
+                </div>
+            </div>
+        </script>
+        <script>
+            var Panel = Vue.extend({
+                props: ['title', 'headerColor'],
+                data: function() {
+                    return {hide: false}
+                },
+                template: '#panelTemplate'
+            });
+            Vue.component('panel', Panel);
+            var vm = new Vue({
+                el: '#controller',
+                data: {
+                    status: 'Verbinden...',
+                    connected: true,
+                    temperature: false,
+                    uptime: 0.0,
+                    hide_info: false,
+                    ram_total: 0,
+                    ram_used: 0,
+                    ram_free: 0
+                },
+                ready: function() {
+                    // Create a client instance
+                    this.client = new Paho.MQTT.Client('192.168.178.37', Number(9001), "clientId-"+ Math.random());
+                    // set callback handlers
+                    this.client.onConnectionLost = this.onConnectionLost;
+                    this.client.onMessageArrived = this.onMessageArrived;
+                    this.connect();
+                },
+
+                methods: {
+                    onConnectionLost: function(responseObject) {
+                        this.connected = false;
+                        if (responseObject.errorCode !== 0) {
+                            this.status = responseObject.errorMessage;
+                        }
+                        window.setTimeout(this.connect, 1000);
+                    },
+
+                    connect: function() {
+                        this.client.connect({
+                            onSuccess: this.onConnect
+                        });
+                    },
+
+                    onMessageArrived: function(message) {
+                        if (message.destinationName == "home/pi/temperature") {
+                                this.temperature = message.payloadString;
+                        }
+                        if (message.destinationName == "$SYS/broker/uptime") {
+                                this.uptime = message.payloadString;
+                        }
+                        if (message.destinationName == "home/pi/ram/total") {
+                                this.ram_total = message.payloadString;
+                        }
+                        if (message.destinationName == "home/pi/ram/used") {
+                                this.ram_used = message.payloadString;
+                        }
+                        //this.status = message.destinationName + ': ' + message.payloadString;
+                    },
+
+                    onConnect: function() {
+                        this.status = "Verbunden";
+                        this.connected = true;
+                        this.client.subscribe("home/pi/#");
+                        this.client.subscribe("$SYS/broker/uptime");
+                    },
+
+                    enable: function(plug, state) {
+                        message = new Paho.MQTT.Message(state);
+                        message.destinationName = "home/plug/" + plug;
+                        this.client.send(message);
+                    }
+                }
+            });
+        </script>
+    </body>
+</html>
